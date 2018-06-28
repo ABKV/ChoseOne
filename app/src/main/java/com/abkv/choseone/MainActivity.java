@@ -12,6 +12,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MenuItem;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -67,6 +68,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
     // The list view which shows the result from nearby searching.
     private ListView mListView = null;
 
+    // The component which is used to input the keyword of nearby searching.
+    private EditText mEditText = null;
+
     private OnNavigationItemSelectedListener mOnNavigationItemSelectedListener = new OnNavigationItemSelectedListener()
     {
         @Override
@@ -81,6 +85,13 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                     @Override
                     public void run()
                     {
+                        String keyword = mEditText.getText().toString();
+
+                        if (keyword.equalsIgnoreCase(""))
+                        {
+                            return;
+                        }
+
                         Looper.prepare();
                         try
                         {
@@ -93,7 +104,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
                             String place = location.getLatitude() + "," + location.getLongitude();
                             String radius = "10000";
-                            String keyword = "拉麵";
 
                             results.addAll(nearbySearch(keyword, radius, place));
 
@@ -191,6 +201,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
         mListView = findViewById(R.id.listView);
+        mEditText = findViewById(R.id.editText);
 
         mClient = new GoogleApiClient
                 .Builder(this)
@@ -205,6 +216,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         String url = String.format(URL_NEARBY_SEARCH, KEY_PLACES_API, radius, location, keyword);
         InputStream inputStream = null;
         List<String> result = new ArrayList<>();
+        List<com.abkv.choseone.Place> results = new ArrayList<>();
 
         try
         {
@@ -223,26 +235,29 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                     JSONObject jObject = new JSONObject(convertInputStreamToString(inputStream));
                     JSONArray resultArray = jObject.getJSONArray("results");
 
-                    nextPage = jObject.getString("next_page_token");
+                    nextPage = jObject.optString("next_page_token");
 
                     if (null != nextPage)
                     {
-                        hasNextpage = true;
-                        url = url + "&next_page_token=" + nextPage;
+                        hasNextpage = false;
+                        url.replace(keyword, keyword + "&next_page_token=" + nextPage);
                     }
 
                     for (int i = 0; i < resultArray.length(); i++)
                     {
                         JSONObject resultObject = resultArray.getJSONObject(i);
-                        StringBuilder content = new StringBuilder();
+                        com.abkv.choseone.Place place = com.abkv.choseone.Place.createPlace(resultObject);
 
-                        content.append(resultObject.getString("name")).append("\n")
-                                .append(resultObject.getString("vicinity")).append("\n")
-                                .append("Rate: ".concat(resultObject.getString("rating")));
+                        String distanceUrl = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=%s&destinations=place_id:%s&key=%s";
+                        HttpsURLConnection distanceRequest = (HttpsURLConnection) new URL(String.format(distanceUrl, location, place.getPlaceId(), KEY_PLACES_API)).openConnection();
 
-                        result.add(content.toString());
+                        JSONObject distanceJson = new JSONObject(convertInputStreamToString(distanceRequest.getInputStream()));
+                        JSONObject distance = distanceJson.getJSONArray("rows").getJSONObject(0).getJSONArray("elements").getJSONObject(0).getJSONObject("distance");
 
-                        Log.i(TAG, content.toString());
+                        results.add(place);
+                        result.add(place.toString() + "\n" + "距離: " + distance.getString("text"));
+
+                        Log.i(TAG, place.toString());
                     }
                 }
                 else
