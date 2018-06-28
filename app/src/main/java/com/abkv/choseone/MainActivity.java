@@ -2,15 +2,17 @@ package com.abkv.choseone;
 
 import android.content.Context;
 import android.location.Location;
-import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
+import android.support.design.widget.BottomNavigationView.OnNavigationItemSelectedListener;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MenuItem;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,6 +30,7 @@ import com.google.android.gms.location.places.PlaceLikelihood;
 import com.google.android.gms.location.places.PlaceLikelihoodBuffer;
 import com.google.android.gms.location.places.Places;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -37,21 +40,34 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.HttpsURLConnection;
 
 public class MainActivity extends AppCompatActivity implements GoogleApiClient.OnConnectionFailedListener
 {
+    // The debug tag.
     private String TAG = "ABKV";
+
+    // The key for using google places API.
+    private static final String KEY_PLACES_API = "AIzaSyDSqgtLhjCmqI-KpeDNLn0lMYzk8qrnFWg";
+
+    // The url for nearby searching.
+    private static final String URL_NEARBY_SEARCH = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=%s&radius=%s&location=%s&types=restaurant&keyword=%s";
+
+    // The client which is used to gather the location of device.
     private GoogleApiClient mClient = null;
+
+    // The main text view on the screen.
     private TextView mTextMessage;
 
-    private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
-            = new BottomNavigationView.OnNavigationItemSelectedListener()
+    // The list view which shows the result from nearby searching.
+    private ListView mListView = null;
+
+    private OnNavigationItemSelectedListener mOnNavigationItemSelectedListener = new OnNavigationItemSelectedListener()
     {
         @Override
         public boolean onNavigationItemSelected(@NonNull MenuItem item)
@@ -66,87 +82,27 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                     public void run()
                     {
                         Looper.prepare();
-                        final StringBuilder result = new StringBuilder();
-
-                        final AtomicReference<Double> longitude = new AtomicReference<>();
-                        final AtomicReference<Double> latitude = new AtomicReference<>();
-
-                        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-
-                        // Define a listener that responds to location updates
-                        LocationListener locationListener = new LocationListener()
-                        {
-                            public void onLocationChanged(Location location)
-                            {
-                                Log.i(TAG, "onLocationChanged");
-                                // Called when a new location is found by the network location provider.
-                                longitude.set(location.getLongitude());
-                                latitude.set(location.getLatitude());
-
-                                Log.i(TAG, "Longitude: " + location.getLongitude() + " Latitude: " + location.getLatitude());
-
-                                String key = "AIzaSyDSqgtLhjCmqI-KpeDNLn0lMYzk8qrnFWg";
-                                String place = latitude.get() + "," + longitude.get();
-                                String radius = "10000";
-                                String keyword = "拉麵";
-
-                                //設定API
-                                String listApi = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=%s&radius=%s&location=%s&types=restaurant&keyword=%s";
-                                Log.i(TAG, result.append(get(String.format(listApi, key, radius, place, keyword))).toString());
-
-                                runOnUiThread(new Runnable()
-                                {
-                                    @Override
-                                    public void run()
-                                    {
-                                        mTextMessage.setText(result.toString());
-                                    }
-                                });
-                            }
-
-                            public void onStatusChanged(String provider, int status, Bundle extras)
-                            {
-                                Log.i(TAG, "onStatusChanged");
-                            }
-
-                            public void onProviderEnabled(String provider)
-                            {
-                                Log.i(TAG, "onProviderEnabled");
-                            }
-
-                            public void onProviderDisabled(String provider)
-                            {
-                                Log.i(TAG, "onProviderDisabled");
-                            }
-                        };
-
                         try
                         {
-                            Log.i(TAG, "" + locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER));
-
-                            // Register the listener with the Location Manager to receive location updates
-//                                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener);
+                            LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
                             Location location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+
+                            final List<String> results = new ArrayList<>();
 
                             Log.i(TAG, "Longitude: " + location.getLongitude() + " Latitude: " + location.getLatitude());
 
-                            String key = "AIzaSyDSqgtLhjCmqI-KpeDNLn0lMYzk8qrnFWg";
                             String place = location.getLatitude() + "," + location.getLongitude();
                             String radius = "10000";
                             String keyword = "拉麵";
 
-                            //設定API
-                            String url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=%s&radius=%s&location=%s&types=restaurant&keyword=%s";
-
-                            result.append(get(String.format(url, key, radius, place, keyword)));
-                            Log.i(TAG, result.toString());
+                            results.addAll(nearbySearch(keyword, radius, place));
 
                             runOnUiThread(new Runnable()
                             {
                                 @Override
                                 public void run()
                                 {
-                                    mTextMessage.setText(result.toString());
+                                    mListView.setAdapter(new ArrayAdapter<>(getBaseContext(), android.R.layout.simple_list_item_1, results));
                                 }
                             });
                         }
@@ -234,6 +190,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         BottomNavigationView navigation = findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
+        mListView = findViewById(R.id.listView);
+
         mClient = new GoogleApiClient
                 .Builder(this)
                 .addApi(Places.GEO_DATA_API)
@@ -242,34 +200,57 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                 .build();
     }
 
-    private String get(String url)
+    private List<String> nearbySearch(String keyword, String radius, String location)
     {
+        String url = String.format(URL_NEARBY_SEARCH, KEY_PLACES_API, radius, location, keyword);
         InputStream inputStream = null;
-        String result = "";
+        List<String> result = new ArrayList<>();
 
         try
         {
-            HttpsURLConnection connection = (HttpsURLConnection) new URL(url).openConnection();
+            boolean hasNextpage = false;
+            String nextPage = "";
 
-            inputStream = connection.getInputStream();
-
-            Log.i(TAG, "Response code: " + connection.getResponseCode());
-
-            // convert inputstream to string
-            if (inputStream != null)
+            do
             {
-                JSONObject jObject = new JSONObject(convertInputStreamToString(inputStream));
+                HttpsURLConnection connection = (HttpsURLConnection) new URL(url).openConnection();
 
-                for(int i = 0;i<jObject.getJSONArray("results").length();i++)
+                hasNextpage = false;
+                inputStream = connection.getInputStream();
+
+                if (connection.getResponseCode() == HttpsURLConnection.HTTP_OK)
                 {
-                    result += jObject.getJSONArray("results").getJSONObject(i).getString("name") + "\n";
-                    Log.i("results name", jObject.getJSONArray("results").getJSONObject(i).getString("name"));
+                    JSONObject jObject = new JSONObject(convertInputStreamToString(inputStream));
+                    JSONArray resultArray = jObject.getJSONArray("results");
+
+                    nextPage = jObject.getString("next_page_token");
+
+                    if (null != nextPage)
+                    {
+                        hasNextpage = true;
+                        url = url + "&next_page_token=" + nextPage;
+                    }
+
+                    for (int i = 0; i < resultArray.length(); i++)
+                    {
+                        JSONObject resultObject = resultArray.getJSONObject(i);
+                        StringBuilder content = new StringBuilder();
+
+                        content.append(resultObject.getString("name")).append("\n")
+                                .append(resultObject.getString("vicinity")).append("\n")
+                                .append("Rate: ".concat(resultObject.getString("rating")));
+
+                        result.add(content.toString());
+
+                        Log.i(TAG, content.toString());
+                    }
                 }
-            }
-            else
-            {
-                result = "Did not work!";
-            }
+                else
+                {
+                    Log.i(TAG, "Response code: " + connection.getResponseCode());
+                    Toast.makeText(this, "The connection didn't work!", Toast.LENGTH_LONG).show();
+                }
+            } while (hasNextpage);
         }
         catch (Exception e)
         {
@@ -279,13 +260,13 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         return result;
     }
 
-    private  String convertInputStreamToString(InputStream inputStream) throws IOException
+    private String convertInputStreamToString(InputStream inputStream) throws IOException
     {
-        BufferedReader bufferedReader = new BufferedReader( new InputStreamReader(inputStream));
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
         String line = "";
         String result = "";
 
-        while((line = bufferedReader.readLine()) != null)
+        while ((line = bufferedReader.readLine()) != null)
         {
             result += line;
         }
@@ -295,7 +276,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         return result;
     }
 
-    private String searchPlaces (String constraint)
+    private String searchPlaces(String constraint)
     {
         String result = null;
 
@@ -352,7 +333,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
     }
 
     @Override
-    public void onConnectionFailed (@NonNull ConnectionResult connectionResult)
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult)
     {
         Log.i(TAG, "Connection Failed!");
         Toast.makeText(this, "Connection failed", Toast.LENGTH_SHORT).show();
