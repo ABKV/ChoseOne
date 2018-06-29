@@ -11,6 +11,8 @@ import android.support.design.widget.BottomNavigationView.OnNavigationItemSelect
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ListView;
@@ -41,6 +43,7 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -70,6 +73,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
     // The component which is used to input the keyword of nearby searching.
     private EditText mEditText = null;
+
+    // The selected items.
+    private List<com.abkv.choseone.Place> mSelectedList = new LinkedList<>();
+
+    // The query result.
+    private List<com.abkv.choseone.Place> mResultList = new ArrayList<>();
 
     private OnNavigationItemSelectedListener mOnNavigationItemSelectedListener = new OnNavigationItemSelectedListener()
     {
@@ -151,7 +160,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                             }
                             likelyPlaces.release();
 
-                            mTextMessage.setText("ABKV" + builder.toString());
+                            //mTextMessage.setText("ABKV" + builder.toString());
                         }
                     });
 
@@ -164,26 +173,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
                 return true;
             case R.id.navigation_notifications:
-                ExecutorService executorSearching = Executors.newSingleThreadExecutor();
-                final StringBuilder result = new StringBuilder();
+                Toast.makeText(getBaseContext(), new Dice(mSelectedList).roll().getName(), Toast.LENGTH_LONG).show();
 
-                executorSearching.execute(new Runnable()
-                {
-                    @Override
-                    public void run()
-                    {
-                        result.append(searchPlaces("咖哩"));
-
-                        runOnUiThread(new Runnable()
-                        {
-                            @Override
-                            public void run()
-                            {
-                                mTextMessage.setText(result.toString());
-                            }
-                        });
-                    }
-                });
                 return true;
             }
             return false;
@@ -203,6 +194,27 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         mListView = findViewById(R.id.listView);
         mEditText = findViewById(R.id.editText);
 
+        mListView.setOnItemClickListener(new AdapterView.OnItemClickListener()
+        {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l)
+            {
+                com.abkv.choseone.Place target = mResultList.get(i);
+
+                view.setBackgroundResource(android.R.color.holo_blue_dark);
+
+                if (!mSelectedList.contains(target))
+                {
+                    mSelectedList.add(target);
+                }
+
+                for (com.abkv.choseone.Place place : mSelectedList)
+                {
+                    Log.i(TAG, place.getName());
+                }
+            }
+        });
+
         mClient = new GoogleApiClient
                 .Builder(this)
                 .addApi(Places.GEO_DATA_API)
@@ -216,7 +228,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         String url = String.format(URL_NEARBY_SEARCH, KEY_PLACES_API, radius, location, keyword);
         InputStream inputStream = null;
         List<String> result = new ArrayList<>();
-        List<com.abkv.choseone.Place> results = new ArrayList<>();
+
+        mResultList.clear();
 
         try
         {
@@ -240,7 +253,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                     if (null != nextPage)
                     {
                         hasNextpage = false;
-                        url.replace(keyword, keyword + "&next_page_token=" + nextPage);
+                        url = url.replace(keyword, keyword + "&next_page_token=" + nextPage);
+
+                        Log.i(TAG, url);
                     }
 
                     for (int i = 0; i < resultArray.length(); i++)
@@ -254,7 +269,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                         JSONObject distanceJson = new JSONObject(convertInputStreamToString(distanceRequest.getInputStream()));
                         JSONObject distance = distanceJson.getJSONArray("rows").getJSONObject(0).getJSONArray("elements").getJSONObject(0).getJSONObject("distance");
 
-                        results.add(place);
+                        mResultList.add(place);
                         result.add(place.toString() + "\n" + "距離: " + distance.getString("text"));
 
                         Log.i(TAG, place.toString());
