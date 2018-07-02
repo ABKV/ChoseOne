@@ -8,29 +8,29 @@ import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
 import android.support.design.widget.BottomNavigationView.OnNavigationItemSelectedListener;
+import android.support.v4.view.PagerAdapter;
+import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
-import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.places.AutocompleteFilter;
 import com.google.android.gms.location.places.AutocompletePrediction;
 import com.google.android.gms.location.places.AutocompletePredictionBuffer;
 import com.google.android.gms.location.places.Place;
-import com.google.android.gms.location.places.PlaceFilter;
-import com.google.android.gms.location.places.PlaceLikelihood;
-import com.google.android.gms.location.places.PlaceLikelihoodBuffer;
 import com.google.android.gms.location.places.Places;
 
 import org.json.JSONArray;
@@ -71,14 +71,25 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
     // The list view which shows the result from nearby searching.
     private ListView mListView = null;
 
+    // The list view which shows selected items.
+    private ListView mSelectedListView = null;
+
     // The component which is used to input the keyword of nearby searching.
     private EditText mEditText = null;
+
+    // The options of food type.
+    private Spinner mSpinner = null;
+
+    // The pager for different pages.
+    private ViewPager mPager = null;
 
     // The selected items.
     private List<com.abkv.choseone.Place> mSelectedList = new LinkedList<>();
 
     // The query result.
     private List<com.abkv.choseone.Place> mResultList = new ArrayList<>();
+
+    private ArrayAdapter<String> mSelectedArrayAdapter = null;
 
     private OnNavigationItemSelectedListener mOnNavigationItemSelectedListener = new OnNavigationItemSelectedListener()
     {
@@ -94,11 +105,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                     @Override
                     public void run()
                     {
+                        String selectedItem = mSpinner.getSelectedItem().toString();
                         String keyword = mEditText.getText().toString();
 
                         if (keyword.equalsIgnoreCase(""))
                         {
-                            return;
+                            keyword = selectedItem;
                         }
 
                         Looper.prepare();
@@ -134,42 +146,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
                 return true;
             case R.id.navigation_dashboard:
-//                    mTextMessage.setText(R.string.title_dashboard);
-
-                final StringBuilder builder = new StringBuilder();
-
-                try
-                {
-                    PendingResult<PlaceLikelihoodBuffer> result = Places.PlaceDetectionApi
-                            .getCurrentPlace(mClient, new PlaceFilter());
-                    result.setResultCallback(new ResultCallback<PlaceLikelihoodBuffer>()
-                    {
-                        @Override
-                        public void onResult(PlaceLikelihoodBuffer likelyPlaces)
-                        {
-                            for (PlaceLikelihood placeLikelihood : likelyPlaces)
-                            {
-                                Place place = placeLikelihood.getPlace();
-                                String content = "Place: " + place.getName()
-                                        + " Address: " + place.getAddress()
-                                        + " has likelihood: " + placeLikelihood.getLikelihood();
-
-                                builder.append(content).append("\n");
-
-                                Log.i(TAG, content);
-                            }
-                            likelyPlaces.release();
-
-                            //mTextMessage.setText("ABKV" + builder.toString());
-                        }
-                    });
-
-                    Log.i(TAG, result.toString());
-                }
-                catch (SecurityException e)
-                {
-                    e.printStackTrace();
-                }
 
                 return true;
             case R.id.navigation_notifications:
@@ -187,13 +163,34 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        final List<View> PAGES = new ArrayList<>();
+
         mTextMessage = findViewById(R.id.message);
         BottomNavigationView navigation = findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
-        mListView = findViewById(R.id.listView);
         mEditText = findViewById(R.id.editText);
+        mSpinner = findViewById(R.id.spinner);
+        mPager = findViewById(R.id.viewPager);
 
+        mSelectedListView = new ListView(this);
+
+        mSelectedArrayAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<String>());
+        mSelectedListView.setAdapter(mSelectedArrayAdapter);
+        mSelectedListView.setOnItemClickListener(new AdapterView.OnItemClickListener()
+        {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l)
+            {
+                com.abkv.choseone.Place target = mResultList.get(i);
+
+                mSelectedList.remove(target);
+                mSelectedArrayAdapter.remove(target.toString());
+                mSelectedArrayAdapter.notifyDataSetInvalidated();
+            }
+        });
+
+        mListView = new ListView(this);
         mListView.setOnItemClickListener(new AdapterView.OnItemClickListener()
         {
             @Override
@@ -201,11 +198,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
             {
                 com.abkv.choseone.Place target = mResultList.get(i);
 
-                view.setBackgroundResource(android.R.color.holo_blue_dark);
-
                 if (!mSelectedList.contains(target))
                 {
                     mSelectedList.add(target);
+                    mSelectedArrayAdapter.add(target.toString());
+                    mSelectedArrayAdapter.notifyDataSetInvalidated();
                 }
 
                 for (com.abkv.choseone.Place place : mSelectedList)
@@ -214,6 +211,38 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                 }
             }
         });
+
+        mSpinner.setAdapter(ArrayAdapter.createFromResource(this, R.array.food_types, android.R.layout.simple_list_item_1));
+
+        PAGES.add(mListView);
+        PAGES.add(mSelectedListView);
+
+        mPager.setAdapter(new PagerAdapter()
+        {
+            @NonNull
+            @Override
+            public Object instantiateItem(@NonNull ViewGroup container, int position)
+            {
+                View view = PAGES.get(position);
+
+                container.addView(view);
+
+                return view;
+            }
+
+            @Override
+            public int getCount()
+            {
+                return PAGES.size();
+            }
+
+            @Override
+            public boolean isViewFromObject(@NonNull View view, @NonNull Object object)
+            {
+                return view == object;
+            }
+        });
+        mPager.setCurrentItem(0);
 
         mClient = new GoogleApiClient
                 .Builder(this)

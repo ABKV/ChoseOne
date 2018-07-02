@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="food_types">
+        <item>飯</item>
+        <item>麵</item>
+        <item>咖哩</item>
+        <item>拉麵</item>
+        <item>鍋</item>
+        <item>日式</item>
+        <item>義式</item>
+    </array>
+</resources>
