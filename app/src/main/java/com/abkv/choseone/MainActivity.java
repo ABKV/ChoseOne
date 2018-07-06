@@ -23,6 +23,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.abkv.choseone.nearbysearch.NearbySearch;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
@@ -89,7 +90,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
     // The query result.
     private List<com.abkv.choseone.Place> mResultList = new ArrayList<>();
 
+    // The adapter for the list view to show the selected results.
     private ArrayAdapter<String> mSelectedArrayAdapter = null;
+
+    // The adapter for the list view to show the searching results.
+    private ArrayAdapter<String> mArrayAdapter = null;
 
     private OnNavigationItemSelectedListener mOnNavigationItemSelectedListener = new OnNavigationItemSelectedListener()
     {
@@ -126,14 +131,21 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                             String place = location.getLatitude() + "," + location.getLongitude();
                             String radius = "10000";
 
-                            results.addAll(nearbySearch(keyword, radius, place));
-
-                            runOnUiThread(new Runnable()
+                            new NearbySearch().builder(getBaseContext()).setRadius(radius).setKeyword(keyword).setLocation(place).execute(new NearbySearch.OnPlaceFoundListener()
                             {
                                 @Override
-                                public void run()
+                                public void onPlaceFound(final com.abkv.choseone.Place place)
                                 {
-                                    mListView.setAdapter(new ArrayAdapter<>(getBaseContext(), android.R.layout.simple_list_item_1, results));
+                                    runOnUiThread(new Runnable()
+                                    {
+                                        @Override
+                                        public void run()
+                                        {
+                                            mResultList.add(place);
+                                            mArrayAdapter.add(place.toString());
+                                            mArrayAdapter.notifyDataSetInvalidated();
+                                        }
+                                    });
                                 }
                             });
                         }
@@ -191,6 +203,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         });
 
         mListView = new ListView(this);
+        mListView.setAdapter(mArrayAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<String>()));
         mListView.setOnItemClickListener(new AdapterView.OnItemClickListener()
         {
             @Override
@@ -279,11 +292,14 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
                     nextPage = jObject.optString("next_page_token");
 
-                    if (null != nextPage)
+                    if (!nextPage.isEmpty())
                     {
-                        hasNextpage = false;
-                        url = url.replace(keyword, keyword + "&next_page_token=" + nextPage);
+                        hasNextpage = true;
 
+                        url = url.split("&pagetoken")[0];
+                        url = url + "&pagetoken=" + nextPage;
+
+                        Log.i(TAG, "next page: " + nextPage);
                         Log.i(TAG, url);
                     }
 
