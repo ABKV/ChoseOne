@@ -1,6 +1,7 @@
 package com.abkv.choseone;
 
 import android.content.Context;
+import android.content.Intent;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
@@ -12,6 +13,7 @@ import android.support.v4.view.PagerAdapter;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.DragEvent;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,16 +25,32 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.abkv.choseone.data.GoogleDriveHandler;
 import com.abkv.choseone.nearbysearch.NearbySearch;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.drive.Drive;
+import com.google.android.gms.drive.DriveClient;
+import com.google.android.gms.drive.DriveFolder;
+import com.google.android.gms.drive.DriveResourceClient;
+import com.google.android.gms.drive.MetadataChangeSet;
 import com.google.android.gms.location.places.AutocompleteFilter;
 import com.google.android.gms.location.places.AutocompletePrediction;
 import com.google.android.gms.location.places.AutocompletePredictionBuffer;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.Places;
+import com.google.android.gms.tasks.Continuation;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -104,6 +122,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
             switch (item.getItemId())
             {
             case R.id.navigation_home:
+
+                mArrayAdapter.clear();
+                mSelectedArrayAdapter.clear();
+                mSelectedList.clear();
+
                 ExecutorService executor = Executors.newSingleThreadExecutor();
                 executor.execute(new Runnable()
                 {
@@ -126,10 +149,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
                             final List<String> results = new ArrayList<>();
 
-                            Log.i(TAG, "Longitude: " + location.getLongitude() + " Latitude: " + location.getLatitude());
+                            // Log.i(this, "Longitude: " + location.getLongitude() + " Latitude: " + location.getLatitude());
 
-                            String place = location.getLatitude() + "," + location.getLongitude();
+                            String place = "24.826278,121.010912";//location.getLatitude() + "," + location.getLongitude();
                             String radius = "10000";
+
+                            mResultList.clear();
 
                             new NearbySearch().builder(getBaseContext()).setRadius(radius).setKeyword(keyword).setLocation(place).execute(new NearbySearch.OnPlaceFoundListener()
                             {
@@ -159,6 +184,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                 return true;
             case R.id.navigation_dashboard:
 
+                mPager.setCurrentItem(1);
                 return true;
             case R.id.navigation_notifications:
                 Toast.makeText(getBaseContext(), new Dice(mSelectedList).roll().getName(), Toast.LENGTH_LONG).show();
@@ -220,7 +246,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
                 for (com.abkv.choseone.Place place : mSelectedList)
                 {
-                    Log.i(TAG, place.getName());
+                    Logger.i(this, place.getName());
                 }
             }
         });
@@ -265,6 +291,101 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                 .build();
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        switch (requestCode)
+        {
+        case 0:
+            if (resultCode != RESULT_OK)
+            {
+                // Sign-in may fail or be cancelled by the user. For this sample, sign-in is
+                // required and is fatal. For apps where sign-in is optional, handle
+                // appropriately
+                Logger.e(this, "Sign-in failed.");
+                finish();
+                return;
+            }
+
+            Task<GoogleSignInAccount> getAccountTask = GoogleSignIn.getSignedInAccountFromIntent(data);
+
+            if (getAccountTask.isSuccessful())
+            {
+                // Build a drive client.
+                DriveClient driveClient = Drive.getDriveClient(getApplicationContext(), getAccountTask.getResult());
+                // Build a drive resource client.
+                final DriveResourceClient resourceClient = Drive.getDriveResourceClient(getApplicationContext(), getAccountTask.getResult());
+
+                new GoogleDriveHandler(resourceClient);
+
+                Task<DriveFolder> getRoot = resourceClient.getRootFolder().continueWithTask(new Continuation<DriveFolder, Task<DriveFolder>>()
+                {
+                    @Override
+                    public Task<DriveFolder> then(@NonNull Task<DriveFolder> task) throws Exception
+                    {
+                        return resourceClient.createFolder(task.getResult(), new MetadataChangeSet.Builder().setTitle(getPackageName()).setMimeType(DriveFolder.MIME_TYPE).setStarred(true).build());
+                    }
+                }).addOnSuccessListener(new OnSuccessListener<DriveFolder>()
+                {
+                    @Override
+                    public void onSuccess(DriveFolder driveFolder)
+                    {
+                        Logger.i(this, driveFolder.getDriveId().encodeToString());
+                    }
+                }).addOnFailureListener(new OnFailureListener()
+                {
+                    @Override
+                    public void onFailure(@NonNull Exception e)
+                    {
+                        e.printStackTrace();
+                    }
+                });
+            }
+            else
+            {
+                Logger.e(this, "Sign-in failed.");
+                finish();
+            }
+            break;
+        case 1:
+//            if (resultCode == RESULT_OK)
+//            {
+//                DriveId driveId = data.getParcelableExtra(
+//                        OpenFileActivityOptions.EXTRA_RESPONSE_DRIVE_ID);
+//                mOpenItemTaskSource.setResult(driveId);
+//            } else
+//            {
+//                mOpenItemTaskSource.setException(new RuntimeException("Unable to open file"));
+//            }
+            break;
+        }
+    }
+
+    @Override
+    protected void onStart()
+    {
+        super.onStart();
+
+        int result = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(this);
+
+        if (result != ConnectionResult.SUCCESS)
+        {
+            GoogleApiAvailability.getInstance().getErrorDialog(this, 0, 0).show();
+        }
+        else
+        {
+            Logger.i(this, result);
+
+            GoogleSignInOptions signInOptions = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestScopes(Drive.SCOPE_FILE, Drive.SCOPE_APPFOLDER).build();
+            GoogleSignInClient client = GoogleSignIn.getClient(this, signInOptions);
+
+            startActivityForResult(client.getSignInIntent(), 0);
+        }
+    }
+
     private List<String> nearbySearch(String keyword, String radius, String location)
     {
         String url = String.format(URL_NEARBY_SEARCH, KEY_PLACES_API, radius, location, keyword);
@@ -299,8 +420,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                         url = url.split("&pagetoken")[0];
                         url = url + "&pagetoken=" + nextPage;
 
-                        Log.i(TAG, "next page: " + nextPage);
-                        Log.i(TAG, url);
+                        Logger.i(this, "next page: " + nextPage);
+                        Logger.i(this, url);
                     }
 
                     for (int i = 0; i < resultArray.length(); i++)
@@ -317,12 +438,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                         mResultList.add(place);
                         result.add(place.toString() + "\n" + "距離: " + distance.getString("text"));
 
-                        Log.i(TAG, place.toString());
+                        Logger.i(this, place.toString());
                     }
                 }
                 else
                 {
-                    Log.i(TAG, "Response code: " + connection.getResponseCode());
+                    Logger.i(this, "Response code: " + connection.getResponseCode());
                     Toast.makeText(this, "The connection didn't work!", Toast.LENGTH_LONG).show();
                 }
             } while (hasNextpage);
@@ -357,7 +478,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
         if (mClient.isConnected())
         {
-            Log.i(TAG, "Starting autocomplete query for: " + constraint);
+            Logger.i(this, "Starting autocomplete query for: " + constraint);
 
             AutocompleteFilter filter = new AutocompleteFilter.Builder().setTypeFilter(Place.TYPE_FOOD).build();
 
@@ -377,14 +498,14 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
             {
                 Toast.makeText(this, "Error contacting API: " + status.toString(),
                         Toast.LENGTH_SHORT).show();
-                Log.e(TAG, "Error getting autocomplete prediction API call: " + status.toString());
+                Logger.e(this, "Error getting autocomplete prediction API call: " + status.toString());
 
                 result = "Error getting autocomplete prediction API call: " + status.toString();
 
                 autocompletePredictions.release();
             }
 
-            Log.i(TAG, "Query completed. Received " + autocompletePredictions.getCount()
+            Logger.i(this, "Query completed. Received " + autocompletePredictions.getCount()
                     + " predictions.");
 
             // Copy the results into our own data structure, because we can't hold onto the buffer.
@@ -410,7 +531,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult)
     {
-        Log.i(TAG, "Connection Failed!");
+        Logger.i(this, "Connection Failed!");
         Toast.makeText(this, "Connection failed", Toast.LENGTH_SHORT).show();
     }
 }

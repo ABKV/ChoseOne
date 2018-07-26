@@ -6,7 +6,18 @@
         <item>咖哩</item>
         <item>拉麵</item>
         <item>鍋</item>
-        <item>日式</item>
+        <item>日式定食</item>
         <item>義式</item>
+        <item>排餐</item>
+        <item>日式麵類</item>
+        <item>日式飯類</item>
+        <item>中式麵食</item>
+        <item>合菜</item>
+        <item>鐵板</item>
+        <item>燒烤</item>
+        <item>早午餐</item>
+        <item>港式</item>
+        <item>南洋風味</item>
+        <item>無菜單</item>
     </array>
 </resources>
