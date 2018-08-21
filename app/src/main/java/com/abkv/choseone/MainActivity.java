@@ -25,6 +25,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.abkv.choseone.data.DbHelper;
 import com.abkv.choseone.data.GoogleDriveHandler;
 import com.abkv.choseone.nearbysearch.NearbySearch;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
@@ -289,12 +290,16 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                 .addApi(Places.PLACE_DETECTION_API)
                 .enableAutoManage(this, this)
                 .build();
+
+        DbHelper.getInstance(this);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data)
     {
         super.onActivityResult(requestCode, resultCode, data);
+
+        Logger.i(this, "request code: ", requestCode);
 
         switch (requestCode)
         {
@@ -313,35 +318,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
             if (getAccountTask.isSuccessful())
             {
-                // Build a drive client.
-                DriveClient driveClient = Drive.getDriveClient(getApplicationContext(), getAccountTask.getResult());
-                // Build a drive resource client.
-                final DriveResourceClient resourceClient = Drive.getDriveResourceClient(getApplicationContext(), getAccountTask.getResult());
-
-                new GoogleDriveHandler(resourceClient);
-
-                Task<DriveFolder> getRoot = resourceClient.getRootFolder().continueWithTask(new Continuation<DriveFolder, Task<DriveFolder>>()
-                {
-                    @Override
-                    public Task<DriveFolder> then(@NonNull Task<DriveFolder> task) throws Exception
-                    {
-                        return resourceClient.createFolder(task.getResult(), new MetadataChangeSet.Builder().setTitle(getPackageName()).setMimeType(DriveFolder.MIME_TYPE).setStarred(true).build());
-                    }
-                }).addOnSuccessListener(new OnSuccessListener<DriveFolder>()
-                {
-                    @Override
-                    public void onSuccess(DriveFolder driveFolder)
-                    {
-                        Logger.i(this, driveFolder.getDriveId().encodeToString());
-                    }
-                }).addOnFailureListener(new OnFailureListener()
-                {
-                    @Override
-                    public void onFailure(@NonNull Exception e)
-                    {
-                        e.printStackTrace();
-                    }
-                });
+                GoogleDriveHandler.getInstance(this, data);
             }
             else
             {
